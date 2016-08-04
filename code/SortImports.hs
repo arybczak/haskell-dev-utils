@@ -63,7 +63,7 @@ convert modules source = T.unlines . concat $ [
 
     icase_sort = map snd
       . sortBy (compare `on` fst)
-      . map (T.toLower &&& id)
+      . map (T.toLower &&& id . T.strip . T.unwords . T.words)
 
     is_local import_type = flip S.member modules
       . T.takeWhile (isAlphaNum <||> (== '.'))
