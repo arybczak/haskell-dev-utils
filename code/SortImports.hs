@@ -34,20 +34,24 @@ infixr 2 <||>
 -- local ones.
 convert :: Set Text -> Text -> Text
 convert modules source = T.unlines . concat $ [
-    header
+    reverse . dropWhile T.null $ reverse header
+  , [T.empty]
   , fimports
   , fqimports
   , separator_if has_foreign_imports
   , limports
   , lqimports
   , separator_if has_local_imports
-  , dropWhile (is import_ <||> T.null) rest
+  , rest
   ]
   where
-    (header, rest) = break (is import_) . T.lines $ source
+    (header, body) = break (is import_) . T.lines $ source
+    (import_section, rest) = break (not . (T.null <||> is import_)) body
+
     (qimports, imports) = (icase_sort *** icase_sort)
       . partition (is qualified_import_)
-      . filter (is import_) $ rest
+      . filter (is import_)
+      $ import_section
 
     (limports, fimports) = partition (is_local import_) imports
     (lqimports, fqimports) = partition (is_local qualified_import_) qimports
@@ -63,7 +67,7 @@ convert modules source = T.unlines . concat $ [
 
     icase_sort = map snd
       . sortBy (compare `on` fst)
-      . map (T.toLower &&& id . T.strip . T.unwords . T.words)
+      . map (T.toLower &&& id . T.unwords . T.words)
 
     is_local import_type = flip S.member modules
       . T.takeWhile (isAlphaNum <||> (== '.'))
@@ -79,7 +83,7 @@ foldThroughHsFiles basepath f iacc = do
     run acc path = do
       is_dir  <- doesDirectoryExist fullpath
       is_file <- doesFileExist fullpath
-      case (is_file && ".hs" `isSuffixOf` path, is_dir) of
+      case (is_file && (".hs" `isSuffixOf` path || ".lhs" `isSuffixOf` path), is_dir) of
         (True, False) -> f acc fullpath
         (False, True) -> foldThroughHsFiles fullpath f acc
         _             -> return acc
@@ -91,15 +95,17 @@ inspectDirectories :: [FilePath] -> IO (Set Text, [FilePath])
 inspectDirectories dirs = foldM (\acc dir -> do
   putStrLn $ "Inspecting " ++ dir ++ "..."
   foldThroughHsFiles dir (\(!modules, !files) file -> do
-    let modul = map slash_to_dot
-              . drop (length dir + 1)  -- remove base directory (+ slash)
-              . take (length file - 3) -- remove .hs at the end
-              $ file
-    putStrLn $ "Found " ++ file ++ " (" ++ modul ++ ")."
-    return (S.insert (T.pack modul) modules, file : files)
+    let module_ = map slash_to_dot
+                . drop (length dir + 1)  -- remove base directory (+ slash)
+                . drop_extension
+                $ file
+    putStrLn $ "Found " ++ file ++ " (" ++ module_ ++ ")."
+    return (S.insert (T.pack module_) modules, file : files)
     ) acc
   ) (S.empty, []) $ map remove_last_slash dirs
   where
+    drop_extension = reverse . drop 1 . dropWhile (/= '.') . reverse
+
     slash_to_dot '/' = '.'
     slash_to_dot c = c
 
