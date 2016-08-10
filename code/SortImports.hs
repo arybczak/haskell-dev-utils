@@ -166,7 +166,7 @@ convert style@Style{..} modules source = T.unlines . concat $ [
   ]
   where
     (header, body) = break is_import . T.lines $ source
-    (import_section, rest) = break (not . (T.null <||> is_import)) body
+    (import_section, rest) = break (not . (T.null <||> is_import <||> is_indented)) body
 
     imports = case P.parseOnly (many parseImport) (T.unlines import_section) of
       Right imps -> sortBy (compareImport alignUnqualified) imps
@@ -177,7 +177,8 @@ convert style@Style{..} modules source = T.unlines . concat $ [
       ExternalFirst -> partition (not . (`S.member` modules) . imModule) imports
       InternalFirst -> partition (      (`S.member` modules) . imModule) imports
 
-    is_import = T.isPrefixOf "import "
+    is_import   = T.isPrefixOf "import "
+    is_indented = T.isPrefixOf " "
 
     separator_if p = if p then [T.empty] else []
 
