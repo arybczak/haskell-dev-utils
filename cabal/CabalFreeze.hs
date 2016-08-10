@@ -9,6 +9,7 @@ import Data.Maybe
 import System.Directory
 import System.Exit
 import System.Process
+import qualified Data.Attoparsec.Combinator as C
 import qualified Data.Attoparsec.Text as P
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
@@ -35,27 +36,18 @@ type PackageSetDelta = M.Map T.Text (Maybe Version, Maybe Version)
 
 parseCabalConfig :: T.Text -> CabalConfig
 parseCabalConfig = either error id
-  . P.parseOnly (P.asciiCI "constraints:" *> parser [])
+  . P.parseOnly (P.asciiCI "constraints:" *> C.sepBy1 parser (P.char ','))
   where
-    parser acc = do
-      P.skipSpace
-      name <- P.takeWhile (not . isSpace)
-      P.skipSpace
-      P.skipWhile (== '=')
-      P.skipSpace
-      version <- parseVersion []
-      P.skipSpace
-      let newAcc = (name, version) : acc
-      P.atEnd >>= \case
-        True  -> return $ reverse newAcc
-        False -> P.char ',' *> parser newAcc
+    parser = (,)
+      <$ P.skipSpace
+      <*> P.takeWhile (not . isSpace)
+      <* P.skipSpace
+      <* P.skipWhile (== '=')
+      <* P.skipSpace
+      <*> parseVersion
+      <* P.skipSpace
 
-    parseVersion acc = do
-      n <- P.decimal
-      let newAcc = n : acc
-      P.peekChar' >>= \case
-        '.' -> P.char '.' *> parseVersion newAcc
-        _   -> return . Version $ reverse newAcc
+    parseVersion = Version <$> C.sepBy1 P.decimal (P.char '.')
 
 ----------------------------------------
 
