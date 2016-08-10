@@ -8,6 +8,7 @@ import Control.Monad
 import Data.Char
 import Data.Functor
 import Data.List
+import Data.Maybe
 import Data.Monoid
 import Data.Set (Set)
 import Data.Text (Text)
@@ -76,9 +77,11 @@ data Import = Import {
   , imSymbols        :: !Symbols
   } deriving (Eq, Show)
 
-compareImport :: Import -> Import -> Ordering
-compareImport a b = mconcat [
-    imQualified a      `compare` imQualified b
+compareImport :: Bool -> Import -> Import -> Ordering
+compareImport ignore_qualified a b = mconcat [
+    if ignore_qualified
+    then mempty
+    else imQualified a `compare` imQualified b
   , imCaselessModule a `compare` imCaselessModule b
   , imAlias a          `compare` imAlias b
   , imSymbols a        `compare` imSymbols b
@@ -110,32 +113,55 @@ parseImport = do
       P.skipSpace
       return alias
 
-showImport :: Import -> T.Text
-showImport Import{..} = T.concat [
-    "import"
-  , if imQualified then " qualified" else ""
-  , " "
-  , imModule
+showImport :: Style -> Import -> T.Text
+showImport Style{..} Import{..} = T.concat [
+    import_module
+  , case aliasAlignment of
+      Just n | isJust imAlias -> T.replicate (max 0 $ n - 1 - T.length import_module) " "
+      _ -> ""
   , maybe "" (" as " <>) imAlias
   , case imSymbols of
       NoSymbols   -> ""
       Explicit ss -> " " <> parenthesize ss
       Hiding ss   -> " hiding " <> parenthesize ss
   ]
+  where
+    import_module = T.concat [
+        "import"
+      , if imQualified
+        then qualified_
+        else if alignUnqualified
+             then T.replicate (T.length qualified_) " "
+             else ""
+      , " "
+      , imModule
+      ]
+
+    qualified_ = " qualified"
 
 ----------------------------------------
 
--- | Transform the haskell source file by lexicographically sorting
--- all its imports and splitting them into two groups, foreign and
--- local ones.
-convert :: Set Text -> Text -> Text
-convert modules source = T.unlines . concat $ [
+data ImportGrouping = NoGrouping | ExternalFirst | InternalFirst
+  deriving Show
+
+data Style = Style {
+    alignUnqualified :: !Bool
+  , aliasAlignment   :: !(Maybe Int)
+  , importGrouping   :: !ImportGrouping
+  } deriving Show
+
+----------------------------------------
+
+-- | Transform Haskell source by lexicographically sorting all its imports
+-- according to the given style.
+convert :: Style -> Set Text -> Text -> Text
+convert style@Style{..} modules source = T.unlines . concat $ [
     reverse . dropWhile T.null $ reverse header
-  , [T.empty]
-  , map showImport foreign_imports
-  , separator_if has_foreign_imports
-  , map showImport local_imports
-  , separator_if has_local_imports
+  , separator_if True
+  , map (showImport style) first_import_group
+  , separator_if $ not $ null first_import_group
+  , map (showImport style) second_import_group
+  , separator_if $ not $ null second_import_group
   , rest
   ]
   where
@@ -143,15 +169,15 @@ convert modules source = T.unlines . concat $ [
     (import_section, rest) = break (not . (T.null <||> is_import)) body
 
     imports = case P.parseOnly (many parseImport) (T.unlines import_section) of
-      Right imps -> sortBy compareImport imps
+      Right imps -> sortBy (compareImport alignUnqualified) imps
       Left  msg  -> error msg
 
-    (local_imports, foreign_imports) = partition ((`S.member` modules) . imModule) imports
+    (first_import_group, second_import_group) = case importGrouping of
+      NoGrouping    -> (imports, [])
+      ExternalFirst -> partition (not . (`S.member` modules) . imModule) imports
+      InternalFirst -> partition (      (`S.member` modules) . imModule) imports
 
     is_import = T.isPrefixOf "import "
-
-    has_foreign_imports = not $ null foreign_imports
-    has_local_imports = not $ null local_imports
 
     separator_if p = if p then [T.empty] else []
 
@@ -196,26 +222,23 @@ inspectDirectories dirs = foldM (\acc dir -> do
     remove_last_slash (c:cs) = c : remove_last_slash cs
 
 -- | Sort import lists in files at given locations.
-sortImports :: String -> [FilePath] -> IO ()
-sortImports suffix dirs = do
+sortImports :: Style -> String -> [FilePath] -> IO ()
+sortImports style suffix dirs = do
   (modules, files) <- inspectDirectories dirs
-  -- transform files at collected locations
   forM_ files $ \file -> do
     putStr $ "Sorting imports in " ++ file ++ "..."
     T.readFile file
-      >>= return . convert modules
-      >>= T.writeFile (file ++ suffix)
+      >>= T.writeFile (file ++ suffix) . convert style modules
     putStrLn " done."
 
--- | Check whether import lists in
--- files at given locations are sorted.
-checkConsistency :: [FilePath] -> IO ()
-checkConsistency dirs = do
+-- | Check whether import lists in files at given locations are sorted.
+checkConsistency :: Style -> [FilePath] -> IO ()
+checkConsistency style dirs = do
   (modules, files) <- inspectDirectories dirs
   forM_ files $ \file -> do
     putStr $ "Checking whether imports in " ++ file ++ " are sorted..."
     source <- T.readFile file
-    if source == convert modules source
+    if source == convert style modules source
       then putStrLn " yes."
       else do
         putStrLn " no."
@@ -230,21 +253,49 @@ main = do
   if null dirs
     then do
       prog <- getProgName
-      putStrLn $ "Usage: " ++ prog ++ " [--check] [--suffix=SUFFIX] <directories>"
-    else case get_options args of
-      (False, suffix) -> sortImports suffix dirs
-      (True, _) -> onException (checkConsistency dirs) $ do
-        putStrLn $ "Run scripts/sort_imports.sh without --check option to fix the problem."
+      putStrLn $ "Usage: " ++ prog ++ " [--check] [--suffix=SUFFIX] [--align-unqualified] [--alias-alignment=N] [--import-grouping=no-grouping|external-first|internal-first] <directories>"
+    else do
+      let (check, style, suffix) = get_options args
+      putStrLn $ "tyle: " ++ show style
+      if not check
+        then sortImports style suffix dirs
+        else onException (checkConsistency style dirs) $ do
+          putStrLn $ "Run SortImports.sh without --check to fix the problem."
   where
     is_config_option = ("--" `isPrefixOf`)
-    opt_suffix = "--suffix="
-    opt_check  = "--check"
 
-    get_options args = (check, suffix)
+    opt_check  = "--check"
+    opt_suffix = "--suffix="
+
+    opt_align_unqualified = "--align-unqualified"
+    opt_alias_alignment   = "--alias-alignment="
+    opt_import_grouping   = "--import-grouping="
+
+    -- TODO: Use something more sensible like cmdargs.
+    get_options args = (check, style, suffix)
       where
         check = case find (== opt_check) args of
           Just _  -> True
           Nothing -> False
+
         suffix = case find (opt_suffix `isPrefixOf`) args of
           Just opt -> drop (length opt_suffix) opt
           Nothing  -> ""
+
+        style = Style align_unqualified alias_alignment import_grouping
+          where
+            align_unqualified = case find (== opt_align_unqualified) args of
+              Just _  -> True
+              Nothing -> False
+
+            alias_alignment = case find (opt_alias_alignment `isPrefixOf`) args of
+              Just opt -> Just . read $ drop (length opt_alias_alignment) opt
+              Nothing  -> Nothing
+
+            import_grouping = case find (opt_import_grouping `isPrefixOf`) args of
+              Just opt -> case drop (length opt_import_grouping) opt of
+                "no-grouping"    -> NoGrouping
+                "external-first" -> ExternalFirst
+                "internal-first" -> InternalFirst
+                _                -> error "invalid import-grouping"
+              Nothing -> ExternalFirst
