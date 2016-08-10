@@ -51,13 +51,14 @@ parseSymbols = P.choice [
       P.skipSpace
       symbols <- (`P.sepBy` P.char ',') $ do
         P.skipSpace
-        symbol <- P.peekChar' >>= \case
-          '(' -> do
-            _ <- P.char '('
-            op <- P.takeWhile1 (/= ')')
-            _ <- P.char ')'
-            return $ "(" <> op <> ")"
-          _ -> P.takeWhile1 ((not . isSpace) <&&> (/= '(') <&&> (/= ')') <&&> (/= ','))
+        symbol <- P.choice [
+            do -- operator
+              _ <- P.char '('
+              op <- P.takeWhile1 (/= ')')
+              _ <- P.char ')'
+              return $ "(" <> op <> ")"
+          , P.takeWhile1 ((not . isSpace) <&&> (/= '(') <&&> (/= ')') <&&> (/= ','))
+          ]
         P.skipSpace
         ctors <- P.option "" (parenthesize <$> parseSymbolList)
         P.skipSpace
