@@ -182,8 +182,8 @@ convert style@Style{..} modules source = T.unlines . concat $ [
 
     separator_if p = if p then [T.empty] else []
 
--- | Recursively traverse the directory and pass all
--- haskell source files into accumulating function.
+-- | Recursively traverse the directory and pass all haskell source files into
+-- accumulating function.
 foldThroughHsFiles :: FilePath -> (acc -> FilePath -> IO acc) -> acc -> IO acc
 foldThroughHsFiles basepath f iacc = do
   paths <- filter ((/= ".") <&&> (/= "..")) <$> getDirectoryContents basepath
