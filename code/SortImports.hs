@@ -141,7 +141,7 @@ showImport Style{..} Import{..} = T.concat [
 
 ----------------------------------------
 
-data ImportGrouping = NoGrouping | ExternalFirst | InternalFirst
+data ImportGrouping = NoGrouping | ExternalInternal | InternalExternal
   deriving Show
 
 data Style = Style {
@@ -173,9 +173,9 @@ convert style@Style{..} modules source = T.unlines . concat $ [
       Left  msg  -> error msg
 
     (first_import_group, second_import_group) = case importGrouping of
-      NoGrouping    -> (imports, [])
-      ExternalFirst -> partition (not . (`S.member` modules) . imModule) imports
-      InternalFirst -> partition (      (`S.member` modules) . imModule) imports
+      NoGrouping       -> (imports, [])
+      ExternalInternal -> partition (not . (`S.member` modules) . imModule) imports
+      InternalExternal -> partition (      (`S.member` modules) . imModule) imports
 
     is_import   = T.isPrefixOf "import "
     is_indented = T.isPrefixOf " "
@@ -254,7 +254,7 @@ main = do
   if null dirs
     then do
       prog <- getProgName
-      putStrLn $ "Usage: " ++ prog ++ " [--check] [--suffix=SUFFIX] [--align-unqualified] [--alias-alignment=N] [--import-grouping=no-grouping|external-first|internal-first] <directories>"
+      putStrLn $ "Usage: " ++ prog ++ " [--check] [--suffix=SUFFIX] [--align-unqualified] [--alias-alignment=N] [--import-grouping=none|external-external|internal-external] <directories>"
     else do
       let (check, style, suffix) = get_options args
       putStrLn $ "tyle: " ++ show style
@@ -295,8 +295,8 @@ main = do
 
             import_grouping = case find (opt_import_grouping `isPrefixOf`) args of
               Just opt -> case drop (length opt_import_grouping) opt of
-                "no-grouping"    -> NoGrouping
-                "external-first" -> ExternalFirst
-                "internal-first" -> InternalFirst
-                _                -> error "invalid import-grouping"
-              Nothing -> ExternalFirst
+                "none"              -> NoGrouping
+                "external-internal" -> ExternalInternal
+                "internal-external" -> InternalExternal
+                _                   -> error "invalid import-grouping"
+              Nothing -> ExternalInternal
