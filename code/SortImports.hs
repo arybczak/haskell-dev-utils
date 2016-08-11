@@ -257,7 +257,7 @@ main = do
       putStrLn $ "Usage: " ++ prog ++ " [--check] [--suffix=SUFFIX] [--align-unqualified] [--alias-alignment=N] [--import-grouping=none|external-external|internal-external] <directories>"
     else do
       let (check, style, suffix) = get_options args
-      putStrLn $ "tyle: " ++ show style
+      putStrLn $ "Using " ++ show style
       if not check
         then sortImports style suffix dirs
         else onException (checkConsistency style dirs) $ do
