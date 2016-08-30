@@ -1,0 +1,8 @@
+#!/bin/sh
+
+cabal configure                             \
+  --ghc-options="-j +RTS -A64m -n2m -RTS"   \
+  --disable-library-vanilla                 \
+  --enable-executable-dynamic               \
+  --disable-optimization                    \
+  "$@"
