@@ -166,9 +166,8 @@ convert style@Style{..} modules source = T.unlines . concat $ [
   , map (showImport style) first_import_group
   , separator_if $ not $ null first_import_group
   , map (showImport style) second_import_group
-  , separator_if $ not $ null second_import_group
-  , rest
-  ]
+  , separator_if $ ((not . null $ second_import_group) && (not . null $ rest))
+  , rest ]
   where
     (header, body) = break is_import . T.lines $ source
     (import_section, rest) = span (T.null <||> is_import <||> is_indented) body
