@@ -1,25 +1,28 @@
-{-# LANGUAGE BangPatterns, LambdaCase, OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 {-# OPTIONS_GHC -Wall #-}
 module Main (main) where
 
-import Control.Applicative
-import Control.Exception
-import Control.Monad
-import Data.Char
-import Data.Functor
-import Data.List
-import Data.Maybe
-import Data.Monoid
-import Data.Set (Set)
-import Data.Text (Text)
-import System.Directory
-import System.Environment
-import System.Exit
-import System.IO (stderr, hPutStrLn)
+import           Control.Applicative
+import           Control.Exception
+import           Control.Monad
 import qualified Data.Attoparsec.Text as P
-import qualified Data.Set as S
-import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import           Data.Char
+import           Data.Functor
+import           Data.List
+import           Data.Maybe
+import           Data.Monoid
+import           Data.Set             (Set)
+import qualified Data.Set             as S
+import           Data.Text            (Text)
+import qualified Data.Text            as T
+import qualified Data.Text.IO         as T
+import           System.Directory
+import           System.Environment
+import           System.Exit
+import           System.IO            (hPutStrLn, stderr)
 
 (<&&>) :: (a -> Bool) -> (a -> Bool) -> (a -> Bool)
 (<&&>) = liftA2 (&&)
@@ -58,7 +61,8 @@ parseSymbols = P.choice [
               op <- P.takeWhile1 (/= ')')
               _ <- P.char ')'
               return $ "(" <> op <> ")"
-          , P.takeWhile1 ((not . isSpace) <&&> (/= '(') <&&> (/= ')') <&&> (/= ','))
+          , P.takeWhile1 ((not . isSpace) <&&> (/= '(') <&&> (/= ')')
+                          <&&> (/= ','))
           ]
         P.skipSpace
         ctors <- P.option "" (parenthesize <$> parseSymbolList)
@@ -117,7 +121,8 @@ showImport :: Style -> Import -> T.Text
 showImport Style{..} Import{..} = T.concat [
     import_module
   , case aliasAlignment of
-      Just n | isJust imAlias -> T.replicate (max 0 $ n - 1 - T.length import_module) " "
+      Just n | isJust imAlias -> T.replicate
+                                 (max 0 $ n - 1 - T.length import_module) " "
       _ -> ""
   , maybe "" (" as " <>) imAlias
   , case imSymbols of
@@ -166,7 +171,7 @@ convert style@Style{..} modules source = T.unlines . concat $ [
   ]
   where
     (header, body) = break is_import . T.lines $ source
-    (import_section, rest) = break (not . (T.null <||> is_import <||> is_indented)) body
+    (import_section, rest) = span (T.null <||> is_import <||> is_indented) body
 
     imports = case P.parseOnly (many parseImport) (T.unlines import_section) of
       Right imps -> sortBy (compareImport alignUnqualified) imps
@@ -174,13 +179,15 @@ convert style@Style{..} modules source = T.unlines . concat $ [
 
     (first_import_group, second_import_group) = case importGrouping of
       NoGrouping       -> (imports, [])
-      ExternalInternal -> partition (not . (`S.member` modules) . imModule) imports
-      InternalExternal -> partition (      (`S.member` modules) . imModule) imports
+      ExternalInternal ->
+        partition (not . (`S.member` modules) . imModule) imports
+      InternalExternal ->
+        partition (      (`S.member` modules) . imModule) imports
 
     is_import   = T.isPrefixOf "import "
     is_indented = T.isPrefixOf " "
 
-    separator_if p = if p then [T.empty] else []
+    separator_if p = [T.empty | p]
 
 -- | Recursively traverse the directory and pass all haskell source files into
 -- accumulating function.
@@ -192,7 +199,8 @@ foldThroughHsFiles basepath f iacc = do
     run acc path = do
       is_dir  <- doesDirectoryExist fullpath
       is_file <- doesFileExist fullpath
-      case (is_file && (".hs" `isSuffixOf` path || ".lhs" `isSuffixOf` path), is_dir) of
+      case (is_file && (".hs" `isSuffixOf` path || ".lhs" `isSuffixOf` path)
+           , is_dir) of
         (True, False) -> f acc fullpath
         (False, True) -> foldThroughHsFiles fullpath f acc
         _             -> return acc
@@ -216,10 +224,10 @@ inspectDirectories dirs = foldM (\acc dir -> do
     drop_extension = reverse . drop 1 . dropWhile (/= '.') . reverse
 
     slash_to_dot '/' = '.'
-    slash_to_dot c = c
+    slash_to_dot c   = c
 
-    remove_last_slash [] = []
-    remove_last_slash ['/'] = []
+    remove_last_slash []     = []
+    remove_last_slash ['/']  = []
     remove_last_slash (c:cs) = c : remove_last_slash cs
 
 -- | Sort import lists in files at given locations.
@@ -265,14 +273,18 @@ main = do
   if null dirs
     then do
       prog <- getProgName
-      putStrLn $ "Usage: " ++ prog ++ " [--check] [--suffix=SUFFIX] [--align-unqualified] [--alias-alignment=N] [--import-grouping=none|external-external|internal-external] <directories>"
+      putStrLn $ "Usage: " ++ prog
+        ++ " [--check] [--suffix=SUFFIX] [--align-unqualified]"
+        ++ " [--alias-alignment=N]"
+        ++ " [--import-grouping=none|external-external|internal-external]"
+        ++ " <directories>"
     else do
       let (check, style, suffix) = get_options args
       putStrLn $ "Using " ++ show style
       if not check
         then sortImports style suffix dirs
-        else onException (checkConsistency style dirs) $ do
-          putStrLn $ "Run SortImports.sh without --check to fix the problem."
+        else onException (checkConsistency style dirs) $
+          putStrLn "Run SortImports.sh without --check to fix the problem."
   where
     is_config_option = ("--" `isPrefixOf`)
 
@@ -300,11 +312,13 @@ main = do
               Just _  -> True
               Nothing -> False
 
-            alias_alignment = case find (opt_alias_alignment `isPrefixOf`) args of
+            alias_alignment =
+              case find (opt_alias_alignment `isPrefixOf`) args of
               Just opt -> Just . read $ drop (length opt_alias_alignment) opt
               Nothing  -> Nothing
 
-            import_grouping = case find (opt_import_grouping `isPrefixOf`) args of
+            import_grouping =
+              case find (opt_import_grouping `isPrefixOf`) args of
               Just opt -> case drop (length opt_import_grouping) opt of
                 "none"              -> NoGrouping
                 "external-internal" -> ExternalInternal
