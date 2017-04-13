@@ -191,11 +191,13 @@ foldThroughHsFiles basepath f iacc = do
     run acc path = do
       is_dir  <- doesDirectoryExist fullpath
       is_file <- doesFileExist fullpath
-      case (is_file && (".hs" `isSuffixOf` path || ".lhs" `isSuffixOf` path), is_dir) of
+      case (is_file && any (`isSuffixOf` path) extensions, is_dir) of
         (True, False) -> f acc fullpath
         (False, True) -> foldThroughHsFiles fullpath f acc
         _             -> return acc
       where
+        extensions = [".hs", ".hsc", ".lhs"]
+
         fullpath = basepath ++ "/" ++ path
 
 -- | Collect modules and file paths from given directories.
