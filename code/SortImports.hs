@@ -221,10 +221,15 @@ inspectDirectories dirs = foldM (\acc dir -> do
                 . drop_extension
                 $ file
     putStrLn $ "Found " ++ file ++ " (" ++ module_ ++ ")."
-    return (S.insert (T.pack module_) modules, file : files)
+    return (maybeInsert (T.pack module_) modules, file : files)
     ) acc
   ) (S.empty, []) $ map remove_last_slash dirs
   where
+    maybeInsert mdl mdlSet = if mdl `elem` mdlWhitelist then mdlSet
+                             else S.insert mdl mdlSet
+    -- Custom Preludes should be considered non-local.
+    mdlWhitelist           = ["Prelude"]
+
     drop_extension = reverse . drop 1 . dropWhile (/= '.') . reverse
 
     slash_to_dot '/' = '.'
