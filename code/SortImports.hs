@@ -228,10 +228,10 @@ inspectDirectories dirs = foldM (\acc dir -> do
     drop_extension = reverse . drop 1 . dropWhile (/= '.') . reverse
 
     slash_to_dot '/' = '.'
-    slash_to_dot c = c
+    slash_to_dot c   = c
 
-    remove_last_slash [] = []
-    remove_last_slash ['/'] = []
+    remove_last_slash []     = []
+    remove_last_slash ['/']  = []
     remove_last_slash (c:cs) = c : remove_last_slash cs
 
 -- | Sort import lists in files at given locations.
