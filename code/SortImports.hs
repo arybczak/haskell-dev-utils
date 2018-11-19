@@ -9,13 +9,12 @@ import Data.Char
 import Data.Functor
 import Data.List
 import Data.Maybe
-import Data.Monoid
 import Data.Set (Set)
 import Data.Text (Text)
 import System.Directory
 import System.Environment
 import System.Exit
-import System.IO (stderr, hPutStrLn)
+import System.IO (hPutStrLn, stderr)
 import qualified Data.Attoparsec.Text as P
 import qualified Data.Set as S
 import qualified Data.Text as T
