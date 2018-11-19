@@ -47,15 +47,15 @@ parseSymbols = P.choice [
   ]
   where
     parseSymbolList = do
-      _ <- P.char '('
+      void $ P.char '('
       P.skipSpace
       symbols <- (`P.sepBy` P.char ',') $ do
         P.skipSpace
         symbol <- P.choice [
             do -- operator
-              _ <- P.char '('
+              void $ P.char '('
               op <- P.takeWhile1 (/= ')')
-              _ <- P.char ')'
+              void $ P.char ')'
               return $ "(" <> op <> ")"
           , P.takeWhile1 ((not . isSpace) <&&> (/= '(') <&&> (/= ')') <&&> (/= ','))
           ]
@@ -64,7 +64,7 @@ parseSymbols = P.choice [
         P.skipSpace
         return $ symbol <> ctors
       P.skipSpace
-      _ <- P.char ')'
+      void $ P.char ')'
       P.skipSpace
       return $ sort symbols
 
@@ -73,6 +73,7 @@ data Import = Import {
   , imModule         :: !T.Text
   , imCaselessModule :: !T.Text
   , imAlias          :: !(Maybe T.Text)
+  , imPackage        :: !(Maybe T.Text)
   , imSymbols        :: !Symbols
   } deriving (Eq, Show)
 
@@ -81,6 +82,7 @@ compareImport ignore_qualified a b = mconcat [
     if ignore_qualified
     then mempty
     else imQualified a `compare` imQualified b
+  , imPackage a        `compare` imPackage b
   , imCaselessModule a `compare` imCaselessModule b
   , imAlias a          `compare` imAlias b
   , imSymbols a        `compare` imSymbols b
@@ -88,9 +90,12 @@ compareImport ignore_qualified a b = mconcat [
 
 parseImport :: P.Parser Import
 parseImport = do
-  _ <- P.string "import"
+  void $ P.string "import"
   P.skipSpace
   is_qualified <- P.option False (P.string "qualified" *> P.skipSpace $> True)
+  package      <- P.option Nothing
+                  (Just <$> (P.char '"' *> parsePkgId <* P.char '"')
+                    <* P.skipSpace)
   module_ <- P.takeWhile1 $ (not . isSpace) <&&> (/= '(')
   P.skipSpace
   alias <- P.option Nothing (Just <$> parseAlias)
@@ -101,12 +106,16 @@ parseImport = do
     , imModule         = module_
     , imCaselessModule = T.toCaseFold module_
     , imAlias          = alias
+    , imPackage        = package
     , imSymbols        = symbols
     }
   where
+    parsePkgId :: P.Parser T.Text
+    parsePkgId = P.takeWhile1 $ (not . isSpace) <&&> (/= '"')
+
     parseAlias :: P.Parser T.Text
     parseAlias = do
-      _ <- P.string "as"
+      void $ P.string "as"
       P.skipSpace
       alias <- P.takeWhile1 $ (not . isSpace) <&&> (/= '(')
       P.skipSpace
@@ -133,6 +142,9 @@ showImport Style{..} Import{..} = T.concat [
              then T.replicate (T.length qualified_) " "
              else ""
       , " "
+      , case imPackage of
+          Nothing  -> ""
+          Just pkg -> "\"" <> pkg <> "\" "
       , imModule
       ]
 
